@@ -72,9 +72,11 @@ class FirewallModule extends BaseModule implements RouteProviderInterface, Navba
 
 	/**
 	 * Self-teardown hook executed on module uninstallation.
+	 * Radically uninstalls and purges Fail2ban, deletes all configuration files,
+	 * unbans all rules, removes sudoers entries, and flushes database tables.
 	 */
 	public function uninstall(): void {
-		// Do not drop core blocked_ips, but clean up module config if desired
+		FirewallService::uninstallFail2ban(true);
 	}
 
 	/**

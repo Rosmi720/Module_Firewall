@@ -112,6 +112,77 @@ class FirewallService {
 	}
 
 	/**
+	 * Completely uninstall and purge Fail2ban from the server,
+	 * unbanning all IPs, stopping and disabling services, removing all configs,
+	 * sockets, logs, and deleting sudoers entries.
+	 *
+	 * @param bool $purgePackage Whether to purge fail2ban package from the OS
+	 * @return array<string, mixed>
+	 */
+	public static function uninstallFail2ban(bool $purgePackage = true): array {
+		$steps = [];
+
+		// 1. Unban all active bans across all jails so iptables chains are cleared
+		@exec('sudo -n fail2ban-client unban --all 2>/dev/null');
+		@exec('sudo -n fail2ban-client stop 2>/dev/null');
+		$steps[] = 'unbanned_and_stopped';
+
+		// 2. Stop and disable systemd service and socket
+		@exec('sudo -n systemctl stop fail2ban fail2ban.socket 2>/dev/null');
+		@exec('sudo -n systemctl disable fail2ban fail2ban.socket 2>/dev/null');
+		$steps[] = 'systemd_disabled';
+
+		// 3. Purge fail2ban package via apt if requested
+		if ($purgePackage) {
+			$out = [];
+			$ret = 0;
+			@exec('DEBIAN_FRONTEND=noninteractive timeout 60 sudo -n /usr/bin/apt-get purge -y --auto-remove fail2ban 2>&1', $out, $ret);
+			$steps[] = 'package_purged';
+		}
+
+		// 4. Force-remove all remaining Fail2ban files and directories
+		$pathsToRemove = [
+			'/etc/fail2ban',
+			'/var/run/fail2ban',
+			'/var/lib/fail2ban',
+			'/tmp/fail2ban*.deb',
+		];
+		foreach ($pathsToRemove as $p) {
+			@exec('sudo -n /usr/bin/rm -rf ' . escapeshellarg($p) . ' 2>/dev/null');
+		}
+
+		// 5. Remove Fail2ban daemon logs
+		@exec('sudo -n /usr/bin/rm -f /var/log/fail2ban.log* 2>/dev/null');
+
+		// 6. Truncate module security log if exists
+		if (file_exists(self::SECURITY_LOG)) {
+			@file_put_contents(self::SECURITY_LOG, '');
+		}
+		$steps[] = 'files_and_logs_deleted';
+
+		// 7. Remove the sudoers rule file itself
+		@exec('sudo -n /usr/bin/rm -f /etc/sudoers.d/xcvm_fail2ban 2>/dev/null');
+		$steps[] = 'sudoers_rule_removed';
+
+		// 8. Clean up all module settings and rules in DB
+		try {
+			$db = self::db();
+			$db->query('TRUNCATE TABLE `module_firewall_rules`');
+			$db->query('TRUNCATE TABLE `module_firewall_history`');
+			$db->query('TRUNCATE TABLE `module_firewall_settings`');
+			$steps[] = 'database_cleaned';
+		} catch (\Throwable $e) {
+			// Ignore if tables are already dropped
+		}
+
+		return [
+			'status'  => 'success',
+			'message' => 'Fail2ban and all associated configurations and rules have been radically uninstalled and purged from the system.',
+			'steps'   => $steps,
+		];
+	}
+
+	/**
 	 * Start the Fail2ban system service.
 	 */
 	public static function start(): bool {

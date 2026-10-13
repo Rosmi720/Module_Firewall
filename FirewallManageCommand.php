@@ -143,9 +143,17 @@ class FirewallManageCommand implements CommandInterface {
 				echo "Steps executed: " . implode(', ', $onRes['steps'] ?? []) . "\n";
 				return 0;
 
+			case 'uninstall':
+			case 'purge':
+				echo "Completely uninstalling and purging Fail2ban from the system...\n";
+				$unRes = FirewallService::uninstallFail2ban(true);
+				echo $unRes['message'] . "\n";
+				echo "Steps executed: " . implode(', ', $unRes['steps'] ?? []) . "\n";
+				return $unRes['status'] === 'success' ? 0 : 1;
+
 			default:
 				echo "Unknown subcommand: {$sub}\n";
-				echo "Available subcommands: status, install, deploy, check-version, upgrade, onboarding, reset-rules, start, stop, restart, reload, ban, unban\n";
+				echo "Available subcommands: status, install, deploy, check-version, upgrade, onboarding, reset-rules, start, stop, restart, reload, ban, unban, uninstall\n";
 				return 1;
 		}
 	}

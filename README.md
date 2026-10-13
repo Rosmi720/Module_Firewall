@@ -325,10 +325,18 @@ POST /{accessCode}/api?action={action}
    ```
 3. Initialize tables and deploy configurations:
    ```bash
-   php /home/xc_vm/console.php firewall:manage install
-   php /home/xc_vm/console.php firewall:manage deploy
-   php /home/xc_vm/console.php firewall:manage start
+   php /home/xc_vm/console.php firewall install
+   php /home/xc_vm/console.php firewall deploy
+   php /home/xc_vm/console.php firewall start
    ```
+
+### Clean Uninstallation & Radical Teardown
+When the module is uninstalled via the Admin Panel (**Settings → Modules → Uninstall**) or via CLI (`php console.php firewall uninstall`):
+1. **Unbans Active Rules**: Flushes all Fail2ban chains and releases all active IP bans cleanly from Linux netfilter/iptables.
+2. **Deactivates Daemons**: Stops and permanently disables `fail2ban.service` and `fail2ban.socket`.
+3. **Purges OS Packages**: Purges `fail2ban` OS packages via `apt-get purge --auto-remove` completely.
+4. **Deletes File Trees**: Radically removes `/etc/fail2ban`, `/var/run/fail2ban`, `/var/lib/fail2ban`, daemon logs `/var/log/fail2ban.log*`, and sudoers rules `/etc/sudoers.d/xcvm_fail2ban`.
+5. **Schema Teardown**: Automatically drops `module_firewall_rules`, `module_firewall_history`, and `module_firewall_settings` via `database_drop.sql`.
 
 ---
 
