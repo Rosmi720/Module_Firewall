@@ -1646,8 +1646,14 @@ INI;
 		// 2. Install Fail2ban if not present or requested
 		$isInstalled = file_exists('/usr/bin/fail2ban-client') || file_exists('/usr/local/bin/fail2ban-client');
 		if (!$isInstalled || !empty($params['force_install'])) {
-			self::installFail2ban();
+			self::installPackage();
 			$stepsExecuted[] = 'fail2ban_installed';
+		}
+
+		// Optional upgrade if requested
+		if (!empty($params['onboard_auto_upgrade']) || !empty($params['auto_upgrade'])) {
+			self::upgradeFail2ban();
+			$stepsExecuted[] = 'fail2ban_upgraded';
 		}
 
 		// 3. Fix /etc/fail2ban permissions
@@ -1657,14 +1663,15 @@ INI;
 		$stepsExecuted[] = 'permissions_tuned';
 
 		// 4. Save settings (preset, ignoreip, setup_completed)
-		$preset = (string) ($params['preset'] ?? 'balanced');
+		$preset = (string) ($params['onboard_preset'] ?? $params['preset'] ?? 'balanced');
 		if (!in_array($preset, ['balanced', 'strict', 'aggressive', 'custom'], true)) {
 			$preset = 'balanced';
 		}
 
 		$whitelist = self::detectWhitelistedIPs();
-		if (!empty($params['whitelist_ips'])) {
-			$customIps = is_array($params['whitelist_ips']) ? $params['whitelist_ips'] : preg_split('/[\s,]+/', (string) $params['whitelist_ips']);
+		$rawWhitelist = $params['onboard_whitelist'] ?? $params['whitelist_ips'] ?? '';
+		if (!empty($rawWhitelist)) {
+			$customIps = is_array($rawWhitelist) ? $rawWhitelist : preg_split('/[\s,]+/', (string) $rawWhitelist);
 			foreach ($customIps as $cip) {
 				$cip = trim($cip);
 				if ($cip !== '' && (filter_var($cip, FILTER_VALIDATE_IP) || str_contains($cip, '/'))) {
@@ -1680,9 +1687,12 @@ INI;
 		}
 		$whitelist = array_values(array_unique(array_filter($whitelist)));
 
+		$syncToDb = !empty($params['onboard_sync_db']) || !empty($params['sync_to_db']);
+
 		self::saveSettings([
 			'preset'          => $preset,
 			'ignoreip'        => implode(' ', $whitelist),
+			'sync_to_db'      => $syncToDb,
 			'setup_completed' => true,
 			'setup_timestamp' => time(),
 		]);
@@ -1697,12 +1707,16 @@ INI;
 		$stepsExecuted[] = 'configs_deployed';
 
 		// 7. Restart service
-		$serviceRes = self::serviceAction('restart');
+		$serviceRes = self::restart();
 		$stepsExecuted[] = 'service_restarted';
 
 		// 8. Initial Ban Sync
-		self::syncBansToDb();
-		$stepsExecuted[] = 'bans_synchronized';
+		try {
+			self::syncFromFail2ban();
+			$stepsExecuted[] = 'bans_synchronized';
+		} catch (\Throwable $e) {
+			error_log('FirewallService::runOnboarding sync error: ' . $e->getMessage());
+		}
 
 		// Gather final status
 		$status = self::getJailsStatus();
@@ -1724,13 +1738,13 @@ INI;
 	 * @return array<string, mixed>
 	 */
 	public static function upgradeFail2ban(): array {
-		$cmd = 'DEBIAN_FRONTEND=noninteractive sudo apt-get update -y && sudo apt-get install --only-upgrade -y fail2ban 2>&1';
+		$cmd = 'DEBIAN_FRONTEND=noninteractive timeout 25 sudo -n /usr/bin/apt-get update -y && timeout 25 sudo -n /usr/bin/apt-get install --only-upgrade -y fail2ban 2>&1';
 		$out = [];
 		$ret = 0;
 		@exec($cmd, $out, $ret);
 
 		// Reload/Restart Fail2ban after upgrade
-		self::serviceAction('restart');
+		self::restart();
 		self::deployConfigs();
 
 		$freshVersion = self::checkFail2banVersions(true);
