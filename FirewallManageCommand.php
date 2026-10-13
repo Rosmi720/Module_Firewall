@@ -115,9 +115,37 @@ class FirewallManageCommand implements CommandInterface {
 				echo "Unbanned {$ip}.\n";
 				return 0;
 
+			case 'check-version':
+				echo "Checking Fail2ban versions (Local vs Official Upstream)...\n";
+				$vInfo = FirewallService::checkFail2banVersions(true);
+				echo "------------------------------------------------------------\n";
+				echo "Installed Version: " . ($vInfo['installed_version'] ?: 'Not installed') . " (" . $vInfo['installed_raw'] . ")\n";
+				echo "APT Candidate:     " . ($vInfo['apt_candidate'] ?: 'N/A') . "\n";
+				echo "Latest Upstream:   " . $vInfo['latest_upstream_version'] . " (" . $vInfo['latest_upstream_name'] . ")\n";
+				echo "Release URL:       " . $vInfo['latest_upstream_url'] . "\n";
+				echo "Status:            " . ($vInfo['is_outdated'] ? "UPDATE AVAILABLE (Newer upstream version available)" : "Up to date") . "\n";
+				echo "------------------------------------------------------------\n";
+				return 0;
+
+			case 'upgrade':
+				echo "Upgrading Fail2ban system package...\n";
+				$upRes = FirewallService::upgradeFail2ban();
+				echo $upRes['message'] . "\n";
+				if (!empty($upRes['output'])) {
+					echo $upRes['output'] . "\n";
+				}
+				return $upRes['status'] === 'success' ? 0 : 1;
+
+			case 'onboarding':
+				echo "Running full initial onboarding & deployment flow...\n";
+				$onRes = FirewallService::runOnboarding();
+				echo $onRes['message'] . "\n";
+				echo "Steps executed: " . implode(', ', $onRes['steps'] ?? []) . "\n";
+				return 0;
+
 			default:
 				echo "Unknown subcommand: {$sub}\n";
-				echo "Available subcommands: status, install, deploy, start, stop, restart, reload, ban, unban\n";
+				echo "Available subcommands: status, install, deploy, check-version, upgrade, onboarding, reset-rules, start, stop, restart, reload, ban, unban\n";
 				return 1;
 		}
 	}

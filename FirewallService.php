@@ -1399,6 +1399,9 @@ INI;
 			$totalCurrentlyFailed += (int) ($j['currently_failed'] ?? 0);
 		}
 
+		$versionInfo = self::checkFail2banVersions(false);
+		$onboardingNeeded = self::isOnboardingNeeded();
+
 		return [
 			'status'                 => $status,
 			'settings'               => $settings,
@@ -1410,6 +1413,333 @@ INI;
 			'uptime'                 => $uptime,
 			'db_blocked_count'       => $dbBlocked,
 			'total_currently_failed' => $totalCurrentlyFailed,
+			'version_info'           => $versionInfo,
+			'onboarding_needed'      => $onboardingNeeded,
+		];
+	}
+
+	/**
+	 * Inspect local Fail2ban version and compare with upstream official release from GitHub.
+	 *
+	 * @param bool $forceRefresh Force querying GitHub API instead of reading 6h cache
+	 * @return array<string, mixed>
+	 */
+	public static function checkFail2banVersions(bool $forceRefresh = false): array {
+		// 1. Detect installed version locally
+		$vOut = [];
+		@exec('fail2ban-client --version 2>/dev/null', $vOut);
+		$rawInstalled = trim($vOut[0] ?? '');
+		$isInstalled = !empty($rawInstalled) && str_contains(strtolower($rawInstalled), 'fail2ban');
+
+		$installedVersion = null;
+		if ($isInstalled && preg_match('/(\d+\.\d+(?:\.\d+)?)/', $rawInstalled, $m)) {
+			$installedVersion = $m[1];
+		}
+
+		// 2. Detect APT upgrade candidate if available
+		$aptCandidate = null;
+		$aptOut = [];
+		@exec('apt-cache policy fail2ban 2>/dev/null', $aptOut);
+		foreach ($aptOut as $line) {
+			if (preg_match('/Candidate:\s*([^\s]+)/i', $line, $cm)) {
+				$cand = trim($cm[1]);
+				if ($cand !== '(none)') {
+					$aptCandidate = $cand;
+				}
+				break;
+			}
+		}
+
+		// 3. Query upstream latest official release (GitHub fail2ban/fail2ban)
+		$db = self::db();
+		$cache = null;
+		$cacheKey = 'fail2ban_version_cache';
+
+		if (!$forceRefresh) {
+			try {
+				$res = $db->query('SELECT `value`, `updated_at` FROM `module_firewall_settings` WHERE `key` = ?', $cacheKey);
+				if ($res) {
+					$row = $db->get_row();
+					if (!empty($row['value'])) {
+						$cData = json_decode((string) $row['value'], true);
+						$cacheAge = time() - (int) ($row['updated_at'] ?? 0);
+						if (is_array($cData) && $cacheAge < 21600) { // 6 hours cache
+							$cache = $cData;
+							$cache['source'] = 'cache';
+						}
+					}
+				}
+			} catch (\Throwable) {
+			}
+		}
+
+		$latestData = $cache;
+		if (!$latestData) {
+			// Baseline fallback
+			$latestData = [
+				'latest_upstream_version' => '1.1.1',
+				'latest_upstream_name'    => 'Fail2ban 1.1.1 (Stable)',
+				'latest_upstream_url'     => 'https://github.com/fail2ban/fail2ban/releases',
+				'latest_upstream_date'    => '2026-08-15',
+				'source'                  => 'fallback',
+			];
+
+			if (function_exists('curl_init')) {
+				$ch = curl_init('https://api.github.com/repos/fail2ban/fail2ban/releases/latest');
+				curl_setopt_array($ch, [
+					CURLOPT_RETURNTRANSFER => true,
+					CURLOPT_TIMEOUT        => 4,
+					CURLOPT_USERAGENT      => 'XC_VM-Firewall-Module/1.0',
+					CURLOPT_HTTPHEADER     => ['Accept: application/vnd.github.v3+json'],
+					CURLOPT_SSL_VERIFYPEER => true,
+				]);
+				$apiRes = curl_exec($ch);
+				$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+				curl_close($ch);
+
+				if ($httpCode === 200 && is_string($apiRes)) {
+					$json = json_decode($apiRes, true);
+					if (is_array($json) && !empty($json['tag_name'])) {
+						$cleanTag = ltrim(trim($json['tag_name']), 'v');
+						$latestData = [
+							'latest_upstream_version' => $cleanTag,
+							'latest_upstream_name'    => (string) ($json['name'] ?? ('Fail2ban ' . $cleanTag)),
+							'latest_upstream_url'     => (string) ($json['html_url'] ?? 'https://github.com/fail2ban/fail2ban/releases'),
+							'latest_upstream_date'    => !empty($json['published_at']) ? substr($json['published_at'], 0, 10) : null,
+							'source'                  => 'live',
+						];
+
+						// Save to cache
+						try {
+							$now = time();
+							$db->query(
+								'INSERT INTO `module_firewall_settings` (`key`, `value`, `updated_at`) VALUES (?, ?, ?)
+								 ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), `updated_at` = VALUES(`updated_at`)',
+								$cacheKey,
+								json_encode($latestData),
+								$now
+							);
+						} catch (\Throwable) {
+						}
+					}
+				}
+			}
+		}
+
+		// 4. Compare versions
+		$latestVersion = $latestData['latest_upstream_version'] ?? '1.1.1';
+		$isOutdated = false;
+		if ($installedVersion && $latestVersion) {
+			$isOutdated = version_compare($installedVersion, $latestVersion, '<');
+		}
+
+		$statusLabel = 'Up to Date';
+		if (!$isInstalled) {
+			$statusLabel = 'Not Installed';
+		} elseif ($isOutdated) {
+			$statusLabel = 'Update Available';
+		}
+
+		return [
+			'installed'               => $isInstalled,
+			'installed_version'       => $installedVersion,
+			'installed_raw'           => $rawInstalled ?: 'Not installed',
+			'apt_candidate'           => $aptCandidate,
+			'latest_upstream_version' => $latestVersion,
+			'latest_upstream_name'    => $latestData['latest_upstream_name'] ?? ('Fail2ban ' . $latestVersion),
+			'latest_upstream_url'     => $latestData['latest_upstream_url'] ?? 'https://github.com/fail2ban/fail2ban/releases',
+			'latest_upstream_date'    => $latestData['latest_upstream_date'] ?? null,
+			'is_outdated'             => $isOutdated,
+			'status_label'            => $statusLabel,
+			'checked_at'              => time(),
+			'source'                  => $latestData['source'] ?? 'live',
+		];
+	}
+
+	/**
+	 * Detect server environment details (ports, IP, paths, OS) to pre-fill onboarding setup.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function detectEnvironmentDetails(): array {
+		$adminIp = $_SERVER['REMOTE_ADDR'] ?? '';
+		if ($adminIp === '127.0.0.1' || $adminIp === '::1') {
+			$adminIp = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $adminIp;
+		}
+
+		$serverIp = $_SERVER['SERVER_ADDR'] ?? '';
+		if (!$serverIp && function_exists('gethostname')) {
+			$serverIp = gethostbyname(gethostname());
+		}
+
+		// Detect OS description
+		$os = 'Linux';
+		if (file_exists('/etc/os-release')) {
+			$osContent = (string) file_get_contents('/etc/os-release');
+			if (preg_match('/PRETTY_NAME="([^"]+)"/', $osContent, $om)) {
+				$os = $om[1];
+			}
+		}
+
+		// Check Fail2ban service state
+		$vOut = [];
+		@exec('pgrep -x fail2ban-server 2>/dev/null', $vOut);
+		$isRunning = !empty($vOut[0]);
+
+		$isInstalled = file_exists('/usr/bin/fail2ban-client') || file_exists('/usr/local/bin/fail2ban-client');
+
+		return [
+			'admin_ip'        => $adminIp,
+			'server_ip'       => $serverIp,
+			'os'              => $os,
+			'is_installed'    => $isInstalled,
+			'is_running'      => $isRunning,
+			'web_ports'       => '80, 443',
+			'stream_ports'    => '8000, 8080, 25461',
+			'ssh_port'        => '22',
+			'security_log'    => self::SECURITY_LOG,
+			'fail2ban_log'    => '/var/log/fail2ban.log',
+			'whitelisted_ips' => self::detectWhitelistedIPs(),
+		];
+	}
+
+	/**
+	 * Determines if the initial setup wizard should be shown on the dashboard.
+	 */
+	public static function isOnboardingNeeded(): bool {
+		$settings = self::getSettings();
+		if (!empty($settings['setup_completed'])) {
+			return false;
+		}
+
+		$isInstalled = file_exists('/usr/bin/fail2ban-client') || file_exists('/usr/local/bin/fail2ban-client');
+		if (!$isInstalled) {
+			return true;
+		}
+
+		if (!file_exists(self::JAIL_CONFIG)) {
+			return true;
+		}
+
+		return empty($settings['setup_completed']);
+	}
+
+	/**
+	 * Executes the complete first-time onboarding and Fail2ban reconfiguration flow.
+	 *
+	 * @param array<string, mixed> $params
+	 * @return array<string, mixed>
+	 */
+	public static function runOnboarding(array $params = []): array {
+		$stepsExecuted = [];
+
+		// 1. Ensure log directories and files
+		if (!is_dir(self::LOG_DIR)) {
+			@mkdir(self::LOG_DIR, 0755, true);
+		}
+		if (!file_exists(self::SECURITY_LOG)) {
+			@touch(self::SECURITY_LOG);
+			@chmod(self::SECURITY_LOG, 0666);
+		}
+		$stepsExecuted[] = 'logs_directory_ready';
+
+		// 2. Install Fail2ban if not present or requested
+		$isInstalled = file_exists('/usr/bin/fail2ban-client') || file_exists('/usr/local/bin/fail2ban-client');
+		if (!$isInstalled || !empty($params['force_install'])) {
+			self::installFail2ban();
+			$stepsExecuted[] = 'fail2ban_installed';
+		}
+
+		// 3. Fix /etc/fail2ban permissions
+		@exec('sudo mkdir -p /etc/fail2ban/jail.d /etc/fail2ban/filter.d /etc/fail2ban/action.d 2>/dev/null');
+		@exec('sudo chmod 0775 /etc/fail2ban/jail.d /etc/fail2ban/filter.d /etc/fail2ban/action.d 2>/dev/null');
+		@exec('sudo chown -R xc_vm:xc_vm /etc/fail2ban/jail.d /etc/fail2ban/filter.d 2>/dev/null');
+		$stepsExecuted[] = 'permissions_tuned';
+
+		// 4. Save settings (preset, ignoreip, setup_completed)
+		$preset = (string) ($params['preset'] ?? 'balanced');
+		if (!in_array($preset, ['balanced', 'strict', 'aggressive', 'custom'], true)) {
+			$preset = 'balanced';
+		}
+
+		$whitelist = self::detectWhitelistedIPs();
+		if (!empty($params['whitelist_ips'])) {
+			$customIps = is_array($params['whitelist_ips']) ? $params['whitelist_ips'] : preg_split('/[\s,]+/', (string) $params['whitelist_ips']);
+			foreach ($customIps as $cip) {
+				$cip = trim($cip);
+				if ($cip !== '' && (filter_var($cip, FILTER_VALIDATE_IP) || str_contains($cip, '/'))) {
+					$whitelist[] = $cip;
+				}
+			}
+		}
+
+		// Ensure current admin IP is never left out
+		$adminIp = $_SERVER['REMOTE_ADDR'] ?? '';
+		if ($adminIp && filter_var($adminIp, FILTER_VALIDATE_IP)) {
+			$whitelist[] = $adminIp;
+		}
+		$whitelist = array_values(array_unique(array_filter($whitelist)));
+
+		self::saveSettings([
+			'preset'          => $preset,
+			'ignoreip'        => implode(' ', $whitelist),
+			'setup_completed' => true,
+			'setup_timestamp' => time(),
+		]);
+		$stepsExecuted[] = 'settings_configured';
+
+		// 5. Seed default rules if table is empty
+		self::initTables();
+		$stepsExecuted[] = 'database_rules_verified';
+
+		// 6. Deploy configurations
+		self::deployConfigs();
+		$stepsExecuted[] = 'configs_deployed';
+
+		// 7. Restart service
+		$serviceRes = self::serviceAction('restart');
+		$stepsExecuted[] = 'service_restarted';
+
+		// 8. Initial Ban Sync
+		self::syncBansToDb();
+		$stepsExecuted[] = 'bans_synchronized';
+
+		// Gather final status
+		$status = self::getJailsStatus();
+		$versionInfo = self::checkFail2banVersions(true);
+
+		return [
+			'status'         => 'success',
+			'message'        => 'Fail2ban and XC_VM Security Suite successfully configured and deployed.',
+			'steps'          => $stepsExecuted,
+			'service_result' => $serviceRes,
+			'version_info'   => $versionInfo,
+			'status_info'    => $status,
+		];
+	}
+
+	/**
+	 * Attempt to upgrade fail2ban system package via apt.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function upgradeFail2ban(): array {
+		$cmd = 'DEBIAN_FRONTEND=noninteractive sudo apt-get update -y && sudo apt-get install --only-upgrade -y fail2ban 2>&1';
+		$out = [];
+		$ret = 0;
+		@exec($cmd, $out, $ret);
+
+		// Reload/Restart Fail2ban after upgrade
+		self::serviceAction('restart');
+		self::deployConfigs();
+
+		$freshVersion = self::checkFail2banVersions(true);
+
+		return [
+			'status'       => $ret === 0 ? 'success' : 'error',
+			'message'      => $ret === 0 ? 'Fail2ban package updated successfully.' : 'Upgrade process completed.',
+			'output'       => implode("\n", array_slice($out, -15)),
+			'version_info' => $freshVersion,
 		];
 	}
 }

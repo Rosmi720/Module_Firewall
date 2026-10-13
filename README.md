@@ -135,6 +135,22 @@ All 4 data tables in the module feature responsive collapsing and full export to
 - `#cliTable`: Interactive terminal commands reference table with 1-click copy buttons.
 - **Export Toolbar**: `Copy`, `CSV`, `Excel`, `PDF`, and `Print`.
 
+### 8. First-Time Setup Wizard (Automated Onboarding)
+- **Automatic Guided Launch**: Automatically launches upon first dashboard access after module installation if Fail2ban is unconfigured or not marked complete.
+- **Auto-Detected Safe Whitelist**: Automatically detects the server IP and the administrator's current public/remote IP, prepopulating `ignoreip` to prevent accidental administrator lockouts.
+- **3-Step Guided Provisioning**:
+  1. Engine & Version Compatibility Check.
+  2. Preset Profile Selection & Whitelist Hardening.
+  3. One-Click Deployment, Rule Compilation, and Service Start.
+
+### 9. Upstream Version Inspector & Package Upgrade
+- **Tri-Fold Version Analysis**: Real-time comparison between:
+  1. Locally installed Fail2ban version (e.g. `1.0.2`).
+  2. Operating system distribution APT package candidate (e.g. `1.0.2-3ubuntu0.1`).
+  3. Official Upstream GitHub Release (e.g. `1.1.1` via GitHub API with 6-hour caching).
+- **Outdated Engine Detection**: Automatically highlights update status in the Executive Hero Bar and Version Inspector modal.
+- **Unattended Package Upgrade**: 1-click package upgrade via web API or terminal (`php console.php firewall upgrade`).
+
 ---
 
 ## Architecture Diagrams & Data Flows

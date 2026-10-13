@@ -116,6 +116,11 @@ class FirewallModule extends BaseModule implements RouteProviderInterface, Navba
 		$router->api('firewall_toggle_rule', [FirewallController::class, 'apiToggleRule']);
 		$router->api('firewall_reset_default_rules', [FirewallController::class, 'apiResetDefaultRules']);
 		$router->api('firewall_test_regex', [FirewallController::class, 'apiTestRegex']);
+
+		// Fail2ban Version Inspection & Onboarding APIs
+		$router->api('firewall_check_versions', [FirewallController::class, 'apiCheckVersions']);
+		$router->api('firewall_upgrade_fail2ban', [FirewallController::class, 'apiUpgradeFail2ban']);
+		$router->api('firewall_complete_onboarding', [FirewallController::class, 'apiCompleteOnboarding']);
 	}
 
 	/**

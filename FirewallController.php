@@ -146,13 +146,24 @@ class FirewallController {
 		$this->ensureCanonicalUrl();
 		$this->ensureAdmin();
 
-		$monitor  = FirewallService::getMonitorData();
-		$status   = $monitor['status'];
-		$settings = $monitor['settings'];
-		$history  = $monitor['history'];
-		$title    = FirewallTranslator::get('firewall_dashboard_title', 'Firewall & Fail2ban Security Suite');
+		$monitor           = FirewallService::getMonitorData();
+		$status            = $monitor['status'];
+		$settings          = $monitor['settings'];
+		$history           = $monitor['history'];
+		$versionInfo       = $monitor['version_info'] ?? FirewallService::checkFail2banVersions();
+		$onboardingNeeded  = $monitor['onboarding_needed'] ?? FirewallService::isOnboardingNeeded();
+		$autoDetectedEnv   = FirewallService::detectEnvironmentDetails();
+		$title             = FirewallTranslator::get('firewall_dashboard_title', 'Firewall & Fail2ban Security Suite');
 
-		$this->render($title, 'dashboard', compact('monitor', 'status', 'settings', 'history'));
+		$this->render($title, 'dashboard', compact(
+			'monitor',
+			'status',
+			'settings',
+			'history',
+			'versionInfo',
+			'onboardingNeeded',
+			'autoDetectedEnv'
+		));
 	}
 
 	/**
@@ -491,6 +502,35 @@ class FirewallController {
 			'matches' => $res['matches'],
 			'message' => $res['message'],
 		]);
+	}
+
+	/**
+	 * API: Check Fail2ban versions (local vs official upstream release).
+	 */
+	public function apiCheckVersions(): void {
+		$this->ensureAdmin();
+		$force = !empty($_GET['force']) || !empty($_POST['force']);
+		$data = FirewallService::checkFail2banVersions((bool) $force);
+		$this->json(['status' => 'success', 'data' => $data]);
+	}
+
+	/**
+	 * API: Upgrade Fail2ban system package.
+	 */
+	public function apiUpgradeFail2ban(): void {
+		$this->ensureAdmin();
+		$res = FirewallService::upgradeFail2ban();
+		$this->json($res);
+	}
+
+	/**
+	 * API: Complete first-time onboarding setup and deploy protection suite.
+	 */
+	public function apiCompleteOnboarding(): void {
+		$this->ensureAdmin();
+		$params = $_POST;
+		$res = FirewallService::runOnboarding($params);
+		$this->json($res);
 	}
 }
 

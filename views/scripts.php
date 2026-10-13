@@ -16,7 +16,10 @@ const fwLang = {
 	cancelBtn: <?= json_encode($language::get('cancel', 'Cancel')); ?>,
 	zeroBannedTitle: <?= json_encode($language::get('firewall_no_banned_title', 'Zero Banned IPs')); ?>,
 	zeroBannedDesc: <?= json_encode($language::get('firewall_no_banned_desc', 'All protected endpoints are clear and healthy.')); ?>,
-	noRulesFound: <?= json_encode($language::get('firewall_no_rules_found', 'No Rules Found')); ?>
+	noRulesFound: <?= json_encode($language::get('firewall_no_rules_found', 'No Rules Found')); ?>,
+	onboardingDeploying: <?= json_encode($language::get('firewall_onboarding_deploying', 'Configuring and starting defense engine... please wait')); ?>,
+	onboardingSuccess: <?= json_encode($language::get('firewall_onboarding_success', 'Fail2ban protection suite configured and active!')); ?>,
+	versionUpgrading: <?= json_encode($language::get('firewall_version_upgrading', 'Upgrading Fail2ban via APT...')); ?>
 };
 
 /**
@@ -967,6 +970,166 @@ function fwExecuteRegexTest() {
 		out.innerHTML = '<div class="text-danger fw-bold"><i class="ti tabler-circle-x me-1"></i>' + err.message + '</div>';
 	});
 }
+
+/**
+ * First-Time Setup Wizard Modal
+ */
+function fwOpenOnboardingModal() {
+	const modalEl = document.getElementById('modalFirstTimeSetup');
+	if (modalEl) {
+		const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+		modal.show();
+	}
+}
+
+/**
+ * Handle Onboarding Form Submission
+ */
+async function fwSubmitOnboarding(e) {
+	if (e) e.preventDefault();
+	const form = document.getElementById('formOnboardingModal');
+	const btn = document.getElementById('btnSubmitOnboard');
+	const statusBox = document.getElementById('onboardingStatusBox');
+	const statusText = document.getElementById('onboardingStatusText');
+
+	if (!form) return;
+
+	const fd = new FormData(form);
+	btn.disabled = true;
+	btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>' + (fwLang.installing || 'Deploying...');
+	statusBox.classList.remove('d-none');
+	statusText.textContent = fwLang.onboardingDeploying || 'Configuring and starting defense engine... please wait';
+
+	try {
+		const res = await fwFetchJson(fwApiUrl('firewall_complete_onboarding'), {
+			method: 'POST',
+			body: fd
+		});
+
+		if (res.status === 'success') {
+			statusBox.className = 'alert alert-success mt-3 mb-0';
+			statusText.innerHTML = '<i class="ti tabler-circle-check me-2"></i>' + (res.message || fwLang.onboardingSuccess);
+			await fwNotify(fwLang.successTitle, res.message || fwLang.onboardingSuccess, 'success');
+			location.reload();
+		} else {
+			statusBox.className = 'alert alert-danger mt-3 mb-0';
+			statusText.innerHTML = '<i class="ti tabler-alert-triangle me-2"></i>' + (res.message || 'Onboarding failed');
+			btn.disabled = false;
+			btn.innerHTML = '<i class="ti tabler-shield-check me-1"></i>Deploy Protection Suite';
+		}
+	} catch (err) {
+		statusBox.className = 'alert alert-danger mt-3 mb-0';
+		statusText.innerHTML = '<i class="ti tabler-alert-triangle me-2"></i>' + (err.message || fwLang.connError);
+		btn.disabled = false;
+		btn.innerHTML = '<i class="ti tabler-shield-check me-1"></i>Deploy Protection Suite';
+	}
+}
+
+/**
+ * Open Version Inspector Modal
+ */
+function fwOpenVersionModal() {
+	const modalEl = document.getElementById('modalVersionInfo');
+	if (modalEl) {
+		const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+		modal.show();
+	}
+}
+
+/**
+ * Check for Fail2ban Updates (queries local & GitHub)
+ */
+async function fwCheckVersionUpdate(force = false) {
+	try {
+		const url = fwApiUrl('firewall_check_versions') + (force ? '&force=1' : '');
+		const res = await fwFetchJson(url);
+		if (res.status === 'success' && res.data) {
+			const d = res.data;
+			window.fwVersionInfo = d;
+			// Update modal fields
+			const installedEl = document.getElementById('verModalInstalled');
+			const upstreamEl = document.getElementById('verModalUpstream');
+			const badgeEl = document.getElementById('verModalStatusBadge');
+			const aptEl = document.getElementById('verModalApt');
+			const tagEl = document.getElementById('verModalTag');
+			const alertBox = document.getElementById('verModalAlertBox');
+
+			if (installedEl) installedEl.textContent = d.installed_version || 'None';
+			if (upstreamEl) upstreamEl.textContent = d.latest_version || 'v1.1.1';
+			if (aptEl) aptEl.textContent = d.apt_candidate || 'N/A';
+			if (tagEl) tagEl.textContent = d.latest_tag || 'v1.1.1';
+
+			if (badgeEl) {
+				badgeEl.className = 'badge ' + (d.is_outdated ? 'bg-label-warning' : 'bg-label-success');
+				badgeEl.textContent = d.status_label || (d.is_outdated ? 'Update Available' : 'Up to Date');
+			}
+
+			if (alertBox) {
+				if (d.is_outdated) {
+					alertBox.innerHTML = '<div class="alert alert-warning py-2 mb-0 d-flex align-items-center"><i class="ti tabler-alert-circle me-2 fs-5"></i><div class="small">An official release update (' + (d.latest_version || 'v1.1.1') + ') is available upstream.</div></div>';
+				} else {
+					alertBox.innerHTML = '<div class="alert alert-success py-2 mb-0 d-flex align-items-center"><i class="ti tabler-circle-check me-2 fs-5"></i><div class="small">The local Fail2ban package is up to date.</div></div>';
+				}
+			}
+
+			if (force) {
+				fwNotify(fwLang.successTitle, 'Version check completed: ' + (d.status_label || 'OK'), 'success');
+			}
+		}
+	} catch (err) {
+		if (force) {
+			fwNotify(fwLang.errorTitle, err.message || fwLang.connError, 'error');
+		}
+	}
+}
+
+/**
+ * Trigger Unattended APT Package Upgrade
+ */
+async function fwUpgradeFail2ban() {
+	if (typeof Swal !== 'undefined') {
+		const result = await Swal.fire({
+			title: 'Upgrade Fail2ban Package?',
+			text: 'This will run apt-get install --only-upgrade fail2ban and reload the daemon.',
+			icon: 'warning',
+			showCancelButton: true,
+			confirmButtonText: 'Yes, upgrade now',
+			cancelButtonText: fwLang.cancelBtn,
+			customClass: {
+				confirmButton: 'btn btn-primary me-2',
+				cancelButton: 'btn btn-outline-secondary'
+			},
+			buttonsStyling: false
+		});
+		if (!result.isConfirmed) return;
+	} else if (!confirm('Upgrade Fail2ban package now?')) {
+		return;
+	}
+
+	try {
+		fwNotify('Upgrading...', fwLang.versionUpgrading || 'Upgrading Fail2ban via APT...', 'info');
+		const res = await fwFetchJson(fwApiUrl('firewall_upgrade_fail2ban'), {
+			method: 'POST'
+		});
+		if (res.status === 'success') {
+			await fwNotify(fwLang.successTitle, res.message, 'success');
+			location.reload();
+		} else {
+			fwNotify(fwLang.errorTitle, res.message || 'Upgrade failed', 'error');
+		}
+	} catch (err) {
+		fwNotify(fwLang.errorTitle, err.message || fwLang.connError, 'error');
+	}
+}
+
+// Auto-trigger Onboarding Modal on load if setup is needed
+document.addEventListener('DOMContentLoaded', function() {
+	if (window.fwOnboardingNeeded) {
+		setTimeout(function() {
+			fwOpenOnboardingModal();
+		}, 600);
+	}
+});
 </script>
 
 </body>

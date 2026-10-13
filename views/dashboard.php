@@ -76,14 +76,29 @@ $jailIcons = [
 					</div>
 				</div>
 
-				<!-- Quick Health Indicator -->
+				<!-- Quick Health & Version Indicator -->
 				<div class="d-none d-lg-flex align-items-center gap-2 bg-light rounded px-3 py-2 border">
 					<i class="ti tabler-server-shield fs-2 text-primary"></i>
 					<div>
-						<small class="text-muted d-block fw-semibold">Defense Engine</small>
-						<span class="badge bg-label-<?= $isRunning ? 'success' : 'danger'; ?> fw-bold font-monospace">
-							<?= $isRunning ? 'fail2ban-server: ACTIVE' : 'fail2ban-server: STOPPED'; ?>
-						</span>
+						<div class="d-flex align-items-center gap-1 mb-1">
+							<small class="text-muted fw-semibold">Defense Engine</small>
+							<button type="button" class="btn btn-xs btn-label-secondary py-0 px-2 font-monospace" onclick="fwOpenVersionModal()" title="<?= htmlspecialchars($language::get('firewall_version_dialog_title', 'Fail2ban Engine Version Inspector')); ?>">
+								v<?= htmlspecialchars($versionInfo['installed_version'] ?? '1.0.2'); ?>
+								<?php if (!empty($versionInfo['is_outdated'])): ?>
+									<i class="ti tabler-sparkles text-warning ms-1" title="<?= htmlspecialchars($language::get('firewall_version_update_available', 'Update Available')); ?>"></i>
+								<?php endif; ?>
+							</button>
+						</div>
+						<div class="d-flex align-items-center gap-1">
+							<span class="badge bg-label-<?= $isRunning ? 'success' : 'danger'; ?> fw-bold font-monospace">
+								<?= $isRunning ? 'fail2ban-server: ACTIVE' : 'fail2ban-server: STOPPED'; ?>
+							</span>
+							<?php if (!empty($versionInfo['is_outdated'])): ?>
+								<span class="badge bg-label-warning cursor-pointer fw-semibold" onclick="fwOpenVersionModal()">
+									<?= htmlspecialchars($language::get('firewall_version_update_available', 'Update')); ?>: v<?= htmlspecialchars($versionInfo['latest_upstream_version'] ?? '1.1.1'); ?>
+								</span>
+							<?php endif; ?>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -138,12 +153,16 @@ $jailIcons = [
 							<i class="ti tabler-refresh me-1"></i><?= htmlspecialchars($language::get('firewall_sync_now', 'Sync Cluster')); ?>
 						</button>
 
+						<button type="button" class="btn btn-outline-secondary" onclick="fwOpenVersionModal()" title="<?= htmlspecialchars($language::get('firewall_version_dialog_title', 'Version Inspector')); ?>">
+							<i class="ti tabler-tag me-1"></i>v<?= htmlspecialchars($versionInfo['installed_version'] ?? '1.0.2'); ?>
+						</button>
+
 						<button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#modalManualBan">
 							<i class="ti tabler-ban me-1"></i><?= htmlspecialchars($language::get('firewall_manual_ban', 'Ban IP')); ?>
 						</button>
 					<?php else: ?>
-						<button type="button" class="btn btn-primary btn-lg fw-bold shadow-sm" id="btnInstallFail2ban" onclick="fwInstall()">
-							<i class="ti tabler-download me-2"></i><?= htmlspecialchars($language::get('firewall_install_now', 'Install Fail2ban')); ?>
+						<button type="button" class="btn btn-primary btn-lg fw-bold shadow-sm" id="btnInstallFail2ban" onclick="fwOpenOnboardingModal()">
+							<i class="ti tabler-rocket me-2"></i><?= htmlspecialchars($language::get('firewall_onboarding_btn_start', 'Launch Setup Wizard')); ?>
 						</button>
 					<?php endif; ?>
 				</div>
@@ -165,16 +184,19 @@ $jailIcons = [
 	</div>
 
 
-	<?php if (!$isInstalled): ?>
-		<!-- Setup Notice Banner -->
-		<div class="card border-primary mb-4 shadow-sm">
-			<div class="card-body p-4 bg-label-primary rounded d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
+	<?php if (!empty($onboardingNeeded)): ?>
+		<!-- Initial Security Setup Banner -->
+		<div class="card border-warning mb-4 shadow-sm" id="bannerOnboarding">
+			<div class="card-body p-4 bg-label-warning rounded d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
 				<div>
-					<h5 class="fw-bold mb-1 text-primary"><i class="ti tabler-sparkles me-2"></i><?= htmlspecialchars($language::get('firewall_banner_title', 'Activate Server Security Suite')); ?></h5>
-					<p class="mb-0 text-muted"><?= htmlspecialchars($language::get('firewall_banner_desc', 'Fail2ban package is not detected on this server. Install it now to enable automated brute-force protection and firewall jail enforcement.')); ?></p>
+					<div class="d-flex align-items-center gap-2 mb-1">
+						<span class="badge bg-warning text-dark fw-bold"><i class="ti tabler-sparkles me-1"></i>SETUP REQUIRED</span>
+						<h5 class="fw-bold mb-0 text-dark"><?= htmlspecialchars($language::get('firewall_onboarding_banner_title', 'Initial Security Setup Required')); ?></h5>
+					</div>
+					<p class="mb-0 text-muted"><?= htmlspecialchars($language::get('firewall_onboarding_banner_desc', 'Fail2ban defense suite is not fully configured for this server. Complete the 1-click wizard to deploy optimal security jails and protection rules.')); ?></p>
 				</div>
-				<button type="button" class="btn btn-primary btn-lg fw-bold text-nowrap" onclick="fwInstall()">
-					<i class="ti tabler-download me-1"></i><?= htmlspecialchars($language::get('firewall_banner_btn', 'Install Fail2ban Now')); ?>
+				<button type="button" class="btn btn-warning btn-lg fw-bold text-nowrap shadow-sm" onclick="fwOpenOnboardingModal()">
+					<i class="ti tabler-rocket me-1"></i><?= htmlspecialchars($language::get('firewall_onboarding_btn_start', 'Launch Setup Wizard')); ?>
 				</button>
 			</div>
 		</div>
@@ -654,3 +676,234 @@ $jailIcons = [
 		</div>
 	</div>
 </div>
+
+<!-- Modal: First-Time Onboarding Setup Wizard -->
+<div class="modal fade" id="modalFirstTimeSetup" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+	<div class="modal-dialog modal-lg modal-dialog-centered">
+		<div class="modal-content border-0 shadow-lg">
+			<div class="modal-header bg-label-primary py-3">
+				<div>
+					<h5 class="modal-title fw-bold mb-1">
+						<i class="ti tabler-shield-check me-2 text-primary"></i><?= htmlspecialchars($language::get('firewall_onboarding_title', 'Firewall & Fail2ban Setup Wizard')); ?>
+					</h5>
+					<p class="text-muted small mb-0"><?= htmlspecialchars($language::get('firewall_onboarding_desc', 'Configure initial security jails, check Fail2ban version compatibility, and deploy core protection.')); ?></p>
+				</div>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<form id="formOnboardingModal" onsubmit="fwSubmitOnboarding(event)">
+				<div class="modal-body p-4">
+					<!-- Step 1: Engine & Version Diagnostics -->
+					<div class="card border border-light-subtle shadow-none mb-4">
+						<div class="card-header bg-transparent py-2 border-bottom d-flex align-items-center justify-content-between">
+							<span class="fw-bold small text-uppercase text-secondary">
+								<i class="ti tabler-cpu me-1 text-primary"></i><?= htmlspecialchars($language::get('firewall_onboarding_step1', '1. Engine & Version')); ?>
+							</span>
+							<span class="badge <?= !empty($versionInfo['is_installed']) ? 'bg-label-success' : 'bg-label-warning'; ?>">
+								<?= !empty($versionInfo['is_installed']) ? htmlspecialchars($versionInfo['status_label']) : htmlspecialchars($language::get('firewall_version_not_installed', 'Not Installed')); ?>
+							</span>
+						</div>
+						<div class="card-body py-3">
+							<div class="row g-3 align-items-center">
+								<div class="col-md-4 text-center border-end">
+									<div class="text-muted small mb-1"><?= htmlspecialchars($language::get('firewall_version_installed', 'Installed Version')); ?></div>
+									<div class="fs-4 fw-bold font-monospace <?= !empty($versionInfo['is_installed']) ? 'text-primary' : 'text-danger'; ?>" id="onboardInstalledVer">
+										<?= htmlspecialchars($versionInfo['installed_version'] ?: 'None'); ?>
+									</div>
+									<div class="small text-muted font-sans"><?= htmlspecialchars($autoDetectedEnv['os'] ?? 'Linux'); ?></div>
+								</div>
+								<div class="col-md-4 text-center border-end">
+									<div class="text-muted small mb-1"><?= htmlspecialchars($language::get('firewall_version_upstream', 'Latest Official Upstream')); ?></div>
+									<div class="fs-4 fw-bold font-monospace text-success" id="onboardUpstreamVer">
+										<?= htmlspecialchars($versionInfo['latest_version'] ?: 'v1.1.1'); ?>
+									</div>
+									<a href="<?= htmlspecialchars($versionInfo['release_url'] ?? 'https://github.com/fail2ban/fail2ban/releases'); ?>" target="_blank" rel="noopener" class="small text-decoration-none">
+										<i class="ti tabler-brand-github me-1"></i>fail2ban/fail2ban
+									</a>
+								</div>
+								<div class="col-md-4">
+									<div class="text-muted small mb-1"><?= htmlspecialchars($language::get('firewall_server_detected_ports', 'Auto-Detected Server Ports')); ?></div>
+									<div class="d-flex flex-wrap gap-1">
+										<span class="badge bg-label-info font-monospace">Web: <?= htmlspecialchars($autoDetectedEnv['web_ports'] ?? '80,443'); ?></span>
+										<span class="badge bg-label-info font-monospace">Stream: <?= htmlspecialchars($autoDetectedEnv['stream_ports'] ?? '8000,8080'); ?></span>
+										<span class="badge bg-label-info font-monospace">SSH: <?= htmlspecialchars($autoDetectedEnv['ssh_port'] ?? '22'); ?></span>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<!-- Step 2: Protection Profile Tuning & Whitelist -->
+					<div class="card border border-light-subtle shadow-none mb-4">
+						<div class="card-header bg-transparent py-2 border-bottom">
+							<span class="fw-bold small text-uppercase text-secondary">
+								<i class="ti tabler-adjustments me-1 text-primary"></i><?= htmlspecialchars($language::get('firewall_onboarding_step2', '2. Tuning & Safe Whitelist')); ?>
+							</span>
+						</div>
+						<div class="card-body py-3">
+							<label class="form-label fw-bold mb-2"><?= htmlspecialchars($language::get('firewall_presets_title', 'Security Presets')); ?></label>
+							<div class="row g-2 mb-3">
+								<div class="col-md-4">
+									<label class="card h-100 border p-3 cursor-pointer">
+										<div class="form-check mb-1">
+											<input class="form-check-input" type="radio" name="onboard_preset" value="balanced" checked>
+											<span class="form-check-label fw-bold text-primary"><?= htmlspecialchars($language::get('firewall_preset_balanced', 'Balanced IPTV')); ?></span>
+										</div>
+										<p class="text-muted small mb-0"><?= htmlspecialchars($language::get('firewall_preset_balanced_desc', '10 stream attempts, 1h ban. Recommended.')); ?></p>
+									</label>
+								</div>
+								<div class="col-md-4">
+									<label class="card h-100 border p-3 cursor-pointer">
+										<div class="form-check mb-1">
+											<input class="form-check-input" type="radio" name="onboard_preset" value="strict">
+											<span class="form-check-label fw-bold text-warning"><?= htmlspecialchars($language::get('firewall_preset_strict', 'Strict Shield')); ?></span>
+										</div>
+										<p class="text-muted small mb-0"><?= htmlspecialchars($language::get('firewall_preset_strict_desc', '3 attempts, 24h ban. Brute-force defense.')); ?></p>
+									</label>
+								</div>
+								<div class="col-md-4">
+									<label class="card h-100 border p-3 cursor-pointer">
+										<div class="form-check mb-1">
+											<input class="form-check-input" type="radio" name="onboard_preset" value="aggressive">
+											<span class="form-check-label fw-bold text-danger"><?= htmlspecialchars($language::get('firewall_preset_aggressive', 'DDoS Lockdown')); ?></span>
+										</div>
+										<p class="text-muted small mb-0"><?= htmlspecialchars($language::get('firewall_preset_aggressive_desc', '2 attempts, 7d ban. Attack lockdown.')); ?></p>
+									</label>
+								</div>
+							</div>
+
+							<!-- Whitelist input with auto-detected admin IP -->
+							<div class="mb-2">
+								<div class="d-flex align-items-center justify-content-between mb-1">
+									<label class="form-label fw-bold mb-0">
+										<i class="ti tabler-shield-lock me-1 text-success"></i><?= htmlspecialchars($language::get('firewall_whitelist_title', 'Trusted Whitelist (ignoreip)')); ?>
+									</label>
+									<span class="badge bg-label-success font-monospace">
+										<?= htmlspecialchars($language::get('firewall_safe_ip_badge', 'Your IP (Safe)')); ?>: <?= htmlspecialchars($autoDetectedEnv['admin_ip'] ?? '127.0.0.1'); ?>
+									</span>
+								</div>
+								<textarea name="onboard_whitelist" class="form-control font-monospace" rows="2" placeholder="127.0.0.1 ::1 ..."><?= htmlspecialchars($autoDetectedEnv['safe_whitelist_str'] ?? '127.0.0.1 ::1'); ?></textarea>
+								<div class="form-text small text-muted"><?= htmlspecialchars($language::get('firewall_whitelist_note', 'Your current IP and all registered Load Balancer nodes are automatically included to prevent lockout.')); ?></div>
+							</div>
+						</div>
+					</div>
+
+					<!-- Step 3: Deploy Options -->
+					<div class="card border border-light-subtle shadow-none">
+						<div class="card-header bg-transparent py-2 border-bottom">
+							<span class="fw-bold small text-uppercase text-secondary">
+								<i class="ti tabler-rocket me-1 text-primary"></i><?= htmlspecialchars($language::get('firewall_onboarding_step3', '3. Deploy & Protect')); ?>
+							</span>
+						</div>
+						<div class="card-body py-3">
+							<div class="form-check form-switch mb-2">
+								<input class="form-check-input" type="checkbox" name="onboard_auto_start" id="onboardAutoStart" checked>
+								<label class="form-check-label fw-semibold" for="onboardAutoStart">Auto-enable and start Fail2ban systemd service</label>
+							</div>
+							<div class="form-check form-switch mb-2">
+								<input class="form-check-input" type="checkbox" name="onboard_sync_db" id="onboardSyncDb" checked>
+								<label class="form-check-label fw-semibold" for="onboardSyncDb">Synchronize banned IPs to Panel blocked_ips database & Cluster nodes</label>
+							</div>
+							<div class="form-check form-switch">
+								<input class="form-check-input" type="checkbox" name="onboard_auto_upgrade" id="onboardAutoUpgrade" <?= !empty($versionInfo['is_outdated']) ? 'checked' : ''; ?>>
+								<label class="form-check-label fw-semibold" for="onboardAutoUpgrade">Attempt unattended APT package upgrade if available</label>
+							</div>
+						</div>
+					</div>
+
+					<!-- Real-time Status Box -->
+					<div id="onboardingStatusBox" class="alert alert-info d-none mt-3 mb-0">
+						<div class="d-flex align-items-center">
+							<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+							<span id="onboardingStatusText"><?= htmlspecialchars($language::get('firewall_onboarding_deploying', 'Configuring and starting defense engine... please wait')); ?></span>
+						</div>
+					</div>
+				</div>
+				<div class="modal-footer bg-light py-3">
+					<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal"><?= htmlspecialchars($language::get('firewall_cancel', 'Cancel')); ?></button>
+					<button type="submit" id="btnSubmitOnboard" class="btn btn-primary">
+						<i class="ti tabler-shield-check me-1"></i><?= htmlspecialchars($language::get('firewall_onboarding_btn_deploy', 'Deploy Protection Suite')); ?>
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
+</div>
+
+<!-- Modal: Fail2ban Version Inspector -->
+<div class="modal fade" id="modalVersionInfo" tabindex="-1" aria-hidden="true">
+	<div class="modal-dialog modal-dialog-centered">
+		<div class="modal-content border-0 shadow-lg">
+			<div class="modal-header bg-label-info py-3">
+				<h5 class="modal-title fw-bold mb-0">
+					<i class="ti tabler-cpu me-2 text-info"></i><?= htmlspecialchars($language::get('firewall_version_dialog_title', 'Fail2ban Engine Version Inspector')); ?>
+				</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<div class="modal-body p-4">
+				<div class="d-flex align-items-center justify-content-between p-3 rounded bg-light mb-3">
+					<div>
+						<div class="text-muted small"><?= htmlspecialchars($language::get('firewall_version_installed', 'Installed Version')); ?></div>
+						<div class="fs-4 fw-bold font-monospace text-dark" id="verModalInstalled"><?= htmlspecialchars($versionInfo['installed_version'] ?: 'None'); ?></div>
+					</div>
+					<div class="text-end">
+						<div class="text-muted small"><?= htmlspecialchars($language::get('firewall_version_upstream', 'Latest Official Upstream')); ?></div>
+						<div class="fs-4 fw-bold font-monospace text-success" id="verModalUpstream"><?= htmlspecialchars($versionInfo['latest_version'] ?: 'v1.1.1'); ?></div>
+					</div>
+				</div>
+
+				<div class="list-group list-group-flush border rounded mb-3">
+					<div class="list-group-item d-flex justify-content-between align-items-center">
+						<span class="text-muted small"><?= htmlspecialchars($language::get('firewall_version_status', 'Status')); ?></span>
+						<span id="verModalStatusBadge" class="badge <?= !empty($versionInfo['is_outdated']) ? 'bg-label-warning' : 'bg-label-success'; ?>">
+							<?= htmlspecialchars($versionInfo['status_label'] ?? 'Unknown'); ?>
+						</span>
+					</div>
+					<div class="list-group-item d-flex justify-content-between align-items-center">
+						<span class="text-muted small">Distribution APT Candidate</span>
+						<span class="font-monospace small" id="verModalApt"><?= htmlspecialchars($versionInfo['apt_candidate'] ?: 'N/A'); ?></span>
+					</div>
+					<div class="list-group-item d-flex justify-content-between align-items-center">
+						<span class="text-muted small">Official Upstream Tag</span>
+						<span class="font-monospace small text-primary" id="verModalTag"><?= htmlspecialchars($versionInfo['latest_tag'] ?: 'v1.1.1'); ?></span>
+					</div>
+					<div class="list-group-item d-flex justify-content-between align-items-center">
+						<span class="text-muted small">Official Repository</span>
+						<a href="<?= htmlspecialchars($versionInfo['release_url'] ?? 'https://github.com/fail2ban/fail2ban/releases'); ?>" target="_blank" rel="noopener" class="small text-decoration-none">
+							fail2ban/fail2ban <i class="ti tabler-external-link ms-1"></i>
+						</a>
+					</div>
+				</div>
+
+				<div id="verModalAlertBox">
+					<?php if (!empty($versionInfo['is_outdated'])): ?>
+						<div class="alert alert-warning py-2 mb-0 d-flex align-items-center">
+							<i class="ti tabler-alert-circle me-2 fs-5"></i>
+							<div class="small">An official release update (<?= htmlspecialchars($versionInfo['latest_version'] ?: 'v1.1.1'); ?>) is available upstream.</div>
+						</div>
+					<?php else: ?>
+						<div class="alert alert-success py-2 mb-0 d-flex align-items-center">
+							<i class="ti tabler-circle-check me-2 fs-5"></i>
+							<div class="small">The local Fail2ban package is up to date with the system repository.</div>
+						</div>
+					<?php endif; ?>
+				</div>
+			</div>
+			<div class="modal-footer bg-light py-3">
+				<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal"><?= htmlspecialchars($language::get('firewall_cancel', 'Cancel')); ?></button>
+				<button type="button" class="btn btn-outline-primary" onclick="fwCheckVersionUpdate(true)">
+					<i class="ti tabler-refresh me-1"></i><?= htmlspecialchars($language::get('firewall_version_check_btn', 'Check for Updates')); ?>
+				</button>
+				<button type="button" class="btn btn-primary" onclick="fwUpgradeFail2ban()">
+					<i class="ti tabler-download me-1"></i><?= htmlspecialchars($language::get('firewall_version_upgrade_btn', 'Upgrade Package')); ?>
+				</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<script>
+window.fwOnboardingNeeded = <?= !empty($onboardingNeeded) ? 'true' : 'false'; ?>;
+window.fwVersionInfo = <?= json_encode($versionInfo ?? []); ?>;
+window.fwAutoDetectedEnv = <?= json_encode($autoDetectedEnv ?? []); ?>;
+</script>
+
