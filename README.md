@@ -1,6 +1,6 @@
 # XC_VM Firewall & Fail2ban Defense Suite
 
-[![Version](https://img.shields.io/badge/Version-1.0.0-blue.svg)](https://github.com/Rosmi720/Module_Firewall/releases)
+[![Version](https://img.shields.io/badge/Version-1.2.1-blue.svg)](https://github.com/Rosmi720/Module_Firewall/releases)
 [![PHP Version](https://img.shields.io/badge/PHP-8.1%2B-blue.svg)](https://php.net/)
 [![XC_VM Architecture](https://img.shields.io/badge/XC__VM-Modular%20Monolith-orange.svg)](https://github.com/Vateron-Media/XC_VM)
 [![Defense Engine](https://img.shields.io/badge/Defense-Fail2ban%20%2B%20iptables-red.svg)](https://www.fail2ban.org/)
@@ -305,10 +305,10 @@ POST /{accessCode}/api?action={action}
 ## Installation & Deployment
 
 ### Method 1: Web Admin Upload (.zip)
-1. Download `firewall_v1.0.0.zip` from the [Latest Release](https://github.com/Rosmi720/Module_Firewall/releases).
+1. Download `firewall_v1.2.1.zip` from the [Latest Release](https://github.com/Rosmi720/Module_Firewall/releases).
 2. Log in to your **XC_VM Admin Panel**.
 3. Navigate to **Settings → Modules → Upload Module**.
-4. Select `firewall_v1.0.0.zip` and click **Upload & Install**.
+4. Select `firewall_v1.2.1.zip` and click **Upload & Install**.
 5. The module automatically registers database tables, configures default jails, and adds the **Firewall & Fail2ban** menu under the navigation bar.
 
 ### Method 2: Manual Server Deployment
@@ -346,6 +346,17 @@ The module features seamless multi-language support powered by `FirewallTranslat
 - **English (`en.ini`)**: Complete standard dictionary.
 - **Arabic (`ar.ini`)**: Native Arabic translations with complete RTL layout optimization.
 - **Zero-Core Reflection**: Dynamically merges module translations into the global `\XcVm\Core\Localization\Translator` without modifying core translation files.
+
+---
+
+## Changelog
+
+### v1.2.1
+- **Upstream Fail2Ban Engine Upgrade**: Automatic detection of newer Fail2Ban upstream packages (e.g., Fail2Ban v1.1.1) from official release mirrors with in-panel upgrade workflow.
+- **Onboarding & Setup Wizard**: Comprehensive post-installation wizard enabling security administrators to choose rule presets (Balanced, Aggressive, Lax), configure custom whitelists, auto-start services, and deploy fail2ban jails in a single click.
+- **Radical Teardown & Purge**: Complete uninstallation routine that automatically unbans all IP addresses, stops daemons, purges OS packages, wipes file trees (`/etc/fail2ban`, `/var/run/fail2ban`), removes sudoers entries, and drops module database schema.
+- **Enhanced Clipboard Functionality**: High-compatibility fallback mechanism for command copying supporting non-secure HTTP contexts.
+- **Zero Inline CSS Compliance**: Enforced 100% stylesheet and design tokens isolation with responsive dark UI.
 
 ---
 

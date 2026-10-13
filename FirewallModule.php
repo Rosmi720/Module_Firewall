@@ -45,7 +45,7 @@ class FirewallModule extends BaseModule implements RouteProviderInterface, Navba
 	}
 
 	public function getVersion(): string {
-		return '1.0.0';
+		return '1.2.1';
 	}
 
 	public function boot(ServiceContainer $container): void {

@@ -2,7 +2,7 @@
     "name": "firewall",
     "hash_id": "d8578edf8458ce06fbc5bb76a58c5ca4",
     "description": "Comprehensive Firewall & Fail2ban Security Suite for XC_VM IPTV Server",
-    "version": "1.0.0",
+    "version": "1.2.1",
     "requires_core": ">=2.6.1",
     "environment": "main",
     "dependencies": [],
