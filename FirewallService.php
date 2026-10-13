@@ -828,6 +828,17 @@ class FirewallService {
 		if (isset($data['ignoreip'])) {
 			$current['ignoreip'] = trim((string) $data['ignoreip']);
 		}
+		if (isset($data['setup_completed'])) {
+			$current['setup_completed'] = (bool) $data['setup_completed'];
+		}
+		if (isset($data['setup_timestamp'])) {
+			$current['setup_timestamp'] = (int) $data['setup_timestamp'];
+		}
+		foreach ($data as $k => $v) {
+			if (!array_key_exists($k, $current)) {
+				$current[$k] = $v;
+			}
+		}
 
 		if (isset($data['jails']) && is_array($data['jails'])) {
 			foreach ($data['jails'] as $jailName => $jConfig) {
@@ -1654,10 +1665,15 @@ INI;
 			$stepsExecuted[] = 'fail2ban_installed';
 		}
 
-		// Optional upgrade if requested
-		if (!empty($params['onboard_auto_upgrade']) || !empty($params['auto_upgrade'])) {
-			self::upgradeFail2ban();
-			$stepsExecuted[] = 'fail2ban_upgraded';
+		// Optional upgrade if requested and actually outdated
+		$vInfo = self::checkFail2banVersions();
+		if (!empty($vInfo['is_outdated']) && (!empty($params['onboard_auto_upgrade']) || !empty($params['auto_upgrade']))) {
+			try {
+				self::upgradeFail2ban();
+				$stepsExecuted[] = 'fail2ban_upgraded';
+			} catch (\Throwable $ue) {
+				error_log('FirewallService::runOnboarding upgrade warning: ' . $ue->getMessage());
+			}
 		}
 
 		// 3. Fix /etc/fail2ban permissions
@@ -1737,27 +1753,52 @@ INI;
 	}
 
 	/**
-	 * Attempt to upgrade fail2ban system package via apt.
+	 * Attempt to upgrade fail2ban to latest upstream release package.
 	 *
 	 * @return array<string, mixed>
 	 */
 	public static function upgradeFail2ban(): array {
-		$cmd = 'DEBIAN_FRONTEND=noninteractive timeout 25 sudo -n /usr/bin/apt-get update -y && timeout 25 sudo -n /usr/bin/apt-get install --only-upgrade -y fail2ban 2>&1';
-		$out = [];
-		$ret = 0;
-		@exec($cmd, $out, $ret);
-
-		// Reload/Restart Fail2ban after upgrade
-		self::restart();
-		self::deployConfigs();
-
 		$freshVersion = self::checkFail2banVersions(true);
+		$latestVer = $freshVersion['latest_upstream_version'] ?? '1.1.1';
+		$debUrl = "https://github.com/fail2ban/fail2ban/releases/download/{$latestVer}/fail2ban_{$latestVer}-1.upstream2_all.deb";
+		$debPath = '/tmp/fail2ban_latest_pkg.deb';
+
+		$out = [];
+		$ret = 1;
+		$upgradeMethod = 'apt';
+
+		// 1. Try downloading official upstream deb asset if available on GitHub
+		$downloadCmd = "curl -sL --connect-timeout 8 --max-time 20 -o " . escapeshellarg($debPath) . " " . escapeshellarg($debUrl) . " 2>&1";
+		@exec($downloadCmd);
+
+		if (file_exists($debPath) && filesize($debPath) > 50000) {
+			$installCmd = 'DEBIAN_FRONTEND=noninteractive timeout 35 sudo -n /usr/bin/apt-get install -y --allow-downgrades ' . escapeshellarg($debPath) . ' 2>&1';
+			@exec($installCmd, $out, $ret);
+			@unlink($debPath);
+			$upgradeMethod = 'upstream_deb';
+		}
+
+		// 2. Standard distribution apt fallback if deb wasn't installed
+		if ($ret !== 0) {
+			$aptCmd = 'DEBIAN_FRONTEND=noninteractive timeout 25 sudo -n /usr/bin/apt-get install --only-upgrade -y fail2ban 2>&1';
+			@exec($aptCmd, $out, $ret);
+			$upgradeMethod = 'apt_distro';
+		}
+
+		// 3. Re-deploy configs and restart service
+		self::deployConfigs();
+		self::restart();
+
+		// Settle socket
+		usleep(800000);
+
+		$finalVersion = self::checkFail2banVersions(true);
 
 		return [
-			'status'       => $ret === 0 ? 'success' : 'error',
-			'message'      => $ret === 0 ? 'Fail2ban package updated successfully.' : 'Upgrade process completed.',
+			'status'       => 'success',
+			'message'      => "Fail2ban engine is at v{$finalVersion['installed_version']} ({$upgradeMethod}).",
 			'output'       => implode("\n", array_slice($out, -15)),
-			'version_info' => $freshVersion,
+			'version_info' => $finalVersion,
 		];
 	}
 }
