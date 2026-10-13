@@ -1542,11 +1542,15 @@ INI;
 
 		return [
 			'installed'               => $isInstalled,
+			'is_installed'            => $isInstalled,
 			'installed_version'       => $installedVersion,
 			'installed_raw'           => $rawInstalled ?: 'Not installed',
 			'apt_candidate'           => $aptCandidate,
+			'latest_version'          => $latestVersion,
+			'latest_tag'              => $latestVersion ? ('v' . ltrim($latestVersion, 'v')) : 'v1.1.1',
 			'latest_upstream_version' => $latestVersion,
 			'latest_upstream_name'    => $latestData['latest_upstream_name'] ?? ('Fail2ban ' . $latestVersion),
+			'release_url'             => $latestData['latest_upstream_url'] ?? 'https://github.com/fail2ban/fail2ban/releases',
 			'latest_upstream_url'     => $latestData['latest_upstream_url'] ?? 'https://github.com/fail2ban/fail2ban/releases',
 			'latest_upstream_date'    => $latestData['latest_upstream_date'] ?? null,
 			'is_outdated'             => $isOutdated,

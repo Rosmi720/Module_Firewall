@@ -699,7 +699,7 @@ $jailIcons = [
 								<i class="ti tabler-cpu me-1 text-primary"></i><?= htmlspecialchars($language::get('firewall_onboarding_step1', '1. Engine & Version')); ?>
 							</span>
 							<span class="badge <?= !empty($versionInfo['is_installed']) ? 'bg-label-success' : 'bg-label-warning'; ?>">
-								<?= !empty($versionInfo['is_installed']) ? htmlspecialchars($versionInfo['status_label']) : htmlspecialchars($language::get('firewall_version_not_installed', 'Not Installed')); ?>
+								<?= !empty($versionInfo['is_installed']) ? htmlspecialchars($versionInfo['status_label'] ?? 'OK') : htmlspecialchars($language::get('firewall_version_not_installed', 'Not Installed')); ?>
 							</span>
 						</div>
 						<div class="card-body py-3">
@@ -707,16 +707,16 @@ $jailIcons = [
 								<div class="col-md-4 text-center border-end">
 									<div class="text-muted small mb-1"><?= htmlspecialchars($language::get('firewall_version_installed', 'Installed Version')); ?></div>
 									<div class="fs-4 fw-bold font-monospace <?= !empty($versionInfo['is_installed']) ? 'text-primary' : 'text-danger'; ?>" id="onboardInstalledVer">
-										<?= htmlspecialchars($versionInfo['installed_version'] ?: 'None'); ?>
+										<?= htmlspecialchars($versionInfo['installed_version'] ?? 'None'); ?>
 									</div>
 									<div class="small text-muted font-sans"><?= htmlspecialchars($autoDetectedEnv['os'] ?? 'Linux'); ?></div>
 								</div>
 								<div class="col-md-4 text-center border-end">
 									<div class="text-muted small mb-1"><?= htmlspecialchars($language::get('firewall_version_upstream', 'Latest Official Upstream')); ?></div>
 									<div class="fs-4 fw-bold font-monospace text-success" id="onboardUpstreamVer">
-										<?= htmlspecialchars($versionInfo['latest_version'] ?: 'v1.1.1'); ?>
+										<?= htmlspecialchars($versionInfo['latest_version'] ?? $versionInfo['latest_upstream_version'] ?? 'v1.1.1'); ?>
 									</div>
-									<a href="<?= htmlspecialchars($versionInfo['release_url'] ?? 'https://github.com/fail2ban/fail2ban/releases'); ?>" target="_blank" rel="noopener" class="small text-decoration-none">
+									<a href="<?= htmlspecialchars($versionInfo['release_url'] ?? $versionInfo['latest_upstream_url'] ?? 'https://github.com/fail2ban/fail2ban/releases'); ?>" target="_blank" rel="noopener" class="small text-decoration-none">
 										<i class="ti tabler-brand-github me-1"></i>fail2ban/fail2ban
 									</a>
 								</div>
@@ -843,11 +843,11 @@ $jailIcons = [
 				<div class="d-flex align-items-center justify-content-between p-3 rounded bg-light mb-3">
 					<div>
 						<div class="text-muted small"><?= htmlspecialchars($language::get('firewall_version_installed', 'Installed Version')); ?></div>
-						<div class="fs-4 fw-bold font-monospace text-dark" id="verModalInstalled"><?= htmlspecialchars($versionInfo['installed_version'] ?: 'None'); ?></div>
+						<div class="fs-4 fw-bold font-monospace text-dark" id="verModalInstalled"><?= htmlspecialchars($versionInfo['installed_version'] ?? 'None'); ?></div>
 					</div>
 					<div class="text-end">
 						<div class="text-muted small"><?= htmlspecialchars($language::get('firewall_version_upstream', 'Latest Official Upstream')); ?></div>
-						<div class="fs-4 fw-bold font-monospace text-success" id="verModalUpstream"><?= htmlspecialchars($versionInfo['latest_version'] ?: 'v1.1.1'); ?></div>
+						<div class="fs-4 fw-bold font-monospace text-success" id="verModalUpstream"><?= htmlspecialchars($versionInfo['latest_version'] ?? $versionInfo['latest_upstream_version'] ?? 'v1.1.1'); ?></div>
 					</div>
 				</div>
 
@@ -860,15 +860,15 @@ $jailIcons = [
 					</div>
 					<div class="list-group-item d-flex justify-content-between align-items-center">
 						<span class="text-muted small">Distribution APT Candidate</span>
-						<span class="font-monospace small" id="verModalApt"><?= htmlspecialchars($versionInfo['apt_candidate'] ?: 'N/A'); ?></span>
+						<span class="font-monospace small" id="verModalApt"><?= htmlspecialchars($versionInfo['apt_candidate'] ?? 'N/A'); ?></span>
 					</div>
 					<div class="list-group-item d-flex justify-content-between align-items-center">
 						<span class="text-muted small">Official Upstream Tag</span>
-						<span class="font-monospace small text-primary" id="verModalTag"><?= htmlspecialchars($versionInfo['latest_tag'] ?: 'v1.1.1'); ?></span>
+						<span class="font-monospace small text-primary" id="verModalTag"><?= htmlspecialchars($versionInfo['latest_tag'] ?? $versionInfo['latest_upstream_name'] ?? 'v1.1.1'); ?></span>
 					</div>
 					<div class="list-group-item d-flex justify-content-between align-items-center">
 						<span class="text-muted small">Official Repository</span>
-						<a href="<?= htmlspecialchars($versionInfo['release_url'] ?? 'https://github.com/fail2ban/fail2ban/releases'); ?>" target="_blank" rel="noopener" class="small text-decoration-none">
+						<a href="<?= htmlspecialchars($versionInfo['release_url'] ?? $versionInfo['latest_upstream_url'] ?? 'https://github.com/fail2ban/fail2ban/releases'); ?>" target="_blank" rel="noopener" class="small text-decoration-none">
 							fail2ban/fail2ban <i class="ti tabler-external-link ms-1"></i>
 						</a>
 					</div>
@@ -878,7 +878,7 @@ $jailIcons = [
 					<?php if (!empty($versionInfo['is_outdated'])): ?>
 						<div class="alert alert-warning py-2 mb-0 d-flex align-items-center">
 							<i class="ti tabler-alert-circle me-2 fs-5"></i>
-							<div class="small">An official release update (<?= htmlspecialchars($versionInfo['latest_version'] ?: 'v1.1.1'); ?>) is available upstream.</div>
+							<div class="small">An official release update (<?= htmlspecialchars($versionInfo['latest_version'] ?? $versionInfo['latest_upstream_version'] ?? 'v1.1.1'); ?>) is available upstream.</div>
 						</div>
 					<?php else: ?>
 						<div class="alert alert-success py-2 mb-0 d-flex align-items-center">
