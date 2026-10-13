@@ -28,6 +28,9 @@ class FirewallController {
 	 * Guard: Ensure only authenticated administrators can access.
 	 */
 	protected function ensureAdmin(): void {
+		if (php_sapi_name() === 'cli') {
+			return;
+		}
 		global $rUserInfo;
 		$isAdmin = !empty($rUserInfo['is_admin']) || (intval($rUserInfo['member_group_id'] ?? 0) === 1);
 
@@ -49,6 +52,9 @@ class FirewallController {
 	 * to canonical flat URLs.
 	 */
 	protected function ensureCanonicalUrl(): void {
+		if (php_sapi_name() === 'cli') {
+			return;
+		}
 		$uri = (string) parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
 		$code = (string) ($_SERVER['XC_CODE'] ?? '');
 		if ($code === '') {
@@ -92,6 +98,17 @@ class FirewallController {
 		$this->ensureAdmin();
 		global $rUserInfo, $rSettings, $rMobile, $rServers, $rPermissions, $_STATUS;
 		$rMobile = (bool) ($rMobile ?? false);
+		if (!is_array($rUserInfo)) {
+			$rUserInfo = [
+				'username'        => 'admin',
+				'is_admin'        => 1,
+				'member_group_id' => 1,
+				'theme'           => 0,
+				'ui_prefs'        => ''
+			];
+		} elseif (empty($rUserInfo['username'])) {
+			$rUserInfo['username'] = 'admin';
+		}
 		FirewallTranslator::init();
 		$language = FirewallTranslator::class;
 		extract($vars);

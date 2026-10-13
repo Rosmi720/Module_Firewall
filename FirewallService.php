@@ -2,6 +2,19 @@
 
 namespace XcVm\Module\Firewall;
 
+if (!defined('XC_VM_FIREWALL_AUTOLOADER_REGISTERED')) {
+	define('XC_VM_FIREWALL_AUTOLOADER_REGISTERED', true);
+	spl_autoload_register(static function (string $class): void {
+		if (str_starts_with($class, 'XcVm\\Module\\Firewall\\')) {
+			$rel = substr($class, strlen('XcVm\\Module\\Firewall\\'));
+			$file = __DIR__ . '/' . str_replace('\\', '/', $rel) . '.php';
+			if (is_file($file)) {
+				require_once $file;
+			}
+		}
+	});
+}
+
 use XcVm\Core\Cluster\BlocklistChanges;
 use XcVm\Domain\Server\ServerRepository;
 use XcVm\Infrastructure\Database\DatabaseAware;
